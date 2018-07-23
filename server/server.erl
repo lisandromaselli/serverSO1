@@ -3,12 +3,12 @@
 -module(server).
 -compile(export_all).
 
-pstat(Pids) ->
+pstat() ->
 	receive after 1000 ->
 		Carga = statistics(total_active_tasks),
-		lists:foreach(fun(X) -> X ! {node(),Carga} end,Pids)
+		lists:foreach(fun(X) -> {pb,X} ! {node(),Carga} end,nodes())
 	end,
-	pstat(Pids).
+	pstat().
 	
 	
 findmin (Key,Value,Acc) ->
@@ -46,15 +46,14 @@ loop() ->
 	end.
 
 iniciador(Nodos) ->
-	Pids = lists:map(fun(X) -> rpc:call(X,erlang,whereis,[pb]) end,Nodos),
-	Pid_S = spawn(?MODULE,pstat,[Pids]).
-
-init(Nodos) ->
-	{ok,LSock} = gen_tcp:listen(8020,[binary,{active,true}]),
+	lists:foreach(fun(X) -> net_adm:ping(X) end,Nodos).
+init(Port,Nodo) ->
+	{ok,LSock} = gen_tcp:listen(Port,[binary,{active,true}]),
 	Pid_B = spawn(?MODULE,pbalance,[dict:new()]),
 	Pid_D = spawn(?MODULE,dispatcher,[LSock,Pid_B]),
-	register(pb,Pid_B).
-	%iniciador(Nodos).
+	spawn(?MODULE,pstat,[]),
+	register(pb,Pid_B),
+	iniciador(Nodos).
 	
 dispatcher(LSock,Pid_B) ->
 	{ok,Sock}  = gen_tcp:accept(LSock),
