@@ -11,9 +11,7 @@ pstat() ->
 	end,
 	pstat().
 	
-	
-findmin (Key,Value,Acc) ->
-	min(Value,Acc).
+
 pbalance(Dict) -> 
 	receive
 	{Pid,nodo} 	->	Lista = dict:to_list(Dict),
@@ -22,21 +20,27 @@ pbalance(Dict) ->
 	{Nodo,Carga} -> pbalance(dict:store(Nodo,Carga,Dict))
 	end,
 	pbalance(Dict).
-
 psocket(Sock,Pid_B) ->
 	receive
 	{tcp,Rte,Msg} ->
-		Msg_p = string:tokens([X || <<X>> <= Msg]," "),
+		Msg_p = string:tokens([X || <<X>> <= Msg]," "), 
 		Pid_B ! {self(),nodo},
 		receive
-			Nodo -> spawn(Nodo,server,pcomando,[Msg_p])
-		end
-	end,
+			Nodo -> Pid = spawn(Nodo,server,pcomando,[]),
+		            Pid ! {Msg_p,self()}
+        end,
+        receive
+            Msg_c -> gen_tcp:send(Rte,Msg_c) 
+        end
+    end,
 psocket(Sock,Pid_B).
 
-iniciador(Nodos) ->
-	lists:foreach(fun(X) -> net_adm:ping(X) end,Nodos).
+bmanager() ->ok.
 
+iniciador(Nodos) ->
+	lists:foreach(fun(X) -> net_adm:ping(X) end,Nodos),
+    Pid = spawn(?MODULE,bmanager,[]),    
+    register(bm,Pid).
 
 init(Port,Nodos) ->
 	{ok,LSock} = gen_tcp:listen(Port,[binary,{active,true}]),
