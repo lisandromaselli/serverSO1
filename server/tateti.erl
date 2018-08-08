@@ -1,60 +1,57 @@
 -module(tateti).
 -compile(export_all).
 
-%{J1, Pid_J1, Jugada}
-
-movem(Lista) ->
-loop1(),
-loop2(),
-movem(Lista).
-
-
-loop1()->
+loop1() ->
 	receive
-		{J1, Pid_J1, Jugada} ->
-			if
-				Jugada >= 1 and Jugada <= 9 -> % Meter en tabla
-			;	true -> % Coordenada no valida
+		{p_one, Pid_J1, Jugada, Lista} when Jugada >= 1; Jugada =< 9 -> 
+		spawn(?MODULE,meter,[p_one, Pid_J1, Jugada, Lista]);
+		{p_one, Pid_J1, Jugada, Lista} -> loop1();
+		{status, St, Pl, Lista} ->
+			case St of
+				0 -> io:format("Lista nueva: ~p~n", [Lista]), ok;
+				1 -> ok;
+				-1 -> fin
 			end;
-			Lista_m ..
-			Pid_J1 ! {"gano",Lista}
-		_ -> {"error"},loop1()
-end.
-
-loop2()->
-	receive
-		{J2, Pid_J2, Jugada} ->
-			if
-				Jugada >= 1 and Jugada <= 9 -> % Meter en tabla
-			;	true -> % Coordenada no valida
-			end
-		_ -> {"error"},loop2()
+			%Pid_J1 ! {"gano",Lista};
+		_ -> loop1()
 	end.
-
 
 init() ->
 	Lista = [0,0,0,0,0,0,0,0,0],
-	spawn(?MODULE, movem, [Lista]).
+	Pid_J = spawn(?MODULE, movem, []),
+	% Pruebas
+	Pid_J ! {p_one, Pid_J, 6, Lista}.
 
-meter(Pl, Jugada, Lista) ->
+
+
+isfull(Pl, Pid_Pl, ListaN) -> 
+	case lists:member(0, ListaN) of 
+		true -> Pid_Pl ! {status, 0, Pl, ListaN};
+		false -> Pid_Pl ! {status, -1, Pl, ListaN}
+	end.
+
+meter(Pl, Pid_Pl, Jugada, Lista) ->
 	case lists:nth(Jugada, Lista) == 0 of		% Pregunta si el lugar esta vacio
 		true ->
 			ListaN = lists:sublist(Lista, Jugada-1) ++ [Pl] ++ lists:nthtail(Jugada, Lista),
 			% Comprobar si alguien gano.
+			io:format("Lista: ~p~n", [ListaN]),
 			case ListaN of
-				[Pl,Pl,Pl,_,_,_,_,_,_] -> {1, Pl, ListaN};
-				[_,_,_,Pl,Pl,Pl,_,_,_] -> {1, Pl, ListaN};
-				[_,_,_,_,_,_,Pl,Pl,Pl] -> {1, Pl, ListaN};
-				[Pl,_,_,Pl,_,_,Pl,_,_] -> {1, Pl, ListaN};
-				[_,Pl,_,_,Pl,_,_,Pl,_] -> {1, Pl, ListaN};
-				[_,_,Pl,_,_,Pl,_,_,Pl] -> {1, Pl, ListaN};
-				[Pl,_,_,_,Pl,_,_,_,Pl] -> {1, Pl, ListaN};
-				[_,_,Pl,_,Pl,_,Pl,_,_] -> {1, Pl, ListaN}
-				_ -> spawn(?MODULE, isfull, [ListaN]) 
+				[Pl,Pl,Pl,_,_,_,_,_,_] -> {status, 1, Pl, ListaN};
+				[_,_,_,Pl,Pl,Pl,_,_,_] -> {status, 1, Pl, ListaN};
+				[_,_,_,_,_,_,Pl,Pl,Pl] -> {status, 1, Pl, ListaN};
+				[Pl,_,_,Pl,_,_,Pl,_,_] -> {status, 1, Pl, ListaN};
+				[_,Pl,_,_,Pl,_,_,Pl,_] -> {status, 1, Pl, ListaN};
+				[_,_,Pl,_,_,Pl,_,_,Pl] -> {status, 1, Pl, ListaN};
+				[Pl,_,_,_,Pl,_,_,_,Pl] -> {status, 1, Pl, ListaN};
+				[_,_,Pl,_,Pl,_,Pl,_,_] -> {status, 1, Pl, ListaN};
+				_ -> spawn(?MODULE, isfull, [Pl, Pid_Pl, ListaN]) 
 			end;
-		false ->
-			{0, Pl, ListaN}
+		false -> io:format("Lugar ocupado. Elegir otro.")	%% Repetir jugada en otro lugar
 	end.
 
-isfull(ListaN) when lists:member(0, ListaN) == true -> {0, Pl, ListaN};
-isfull(ListaN) when lists:member(0, ListaN) == false -> {-1, Pl, ListaN}.
+
+movem() ->
+loop1(),
+%loop2(),
+movem().
