@@ -2,73 +2,78 @@
 -compile(export_all).
 
 
-loop(Sock) ->
-receive
-	{Msg,Rte}-> 
-		%% Nuevo = string:tokens([X || <<X>> <= Msg]," "),
-		case Msg of
-			["CON", Nombre] -> 	check_nombre(Nombre, self()),
-								receive
-									Rta -> Rte ! Rta
-								end;
-			["LSG", Nombre] -> 	bm ! {lista, self()},
-								receive
-									Rta -> Rte ! Rta	
-								end;
-			["NEW", Nombre] -> 	bm ! {new, Nombre, self()},
-								receive
-									Pid_j -> Pid_j ! {new, Nombre, self()} %% tateti responde si pudo crearla
-								end,
-								receive
-									Rta -> Rte ! Rta
-								end;
-			["ACC", Nombre, Juegoid] -> bm ! {acepta, Nombre, Juegoid, self()},
-										receive 
-											Pid_j -> Pid_j ! {acepta, Nombre, Juegoid, self()}
-										end,
-										receive 
-											Rta -> Rte ! Rta
-										end;
-			["PLA", Nombre, Juegoid, Jugada] -> bm ! {jugada, Nombre, Juegoid, Jugada, self()},
-												receive 
-													Pid_j -> Pid_j ! {jugada, Nombre, Juegoid, Jugada, self()}
-												end,
-												receive
-													Rta -> Rte ! Rta
-												end;
-			["OBS", Nombre, Juegoid] -> bm ! {observador, Nombre, Juegoid, self()},
-										receive 
-											Pid_j -> Pid_j ! {observador, Nombre, Juegoid, self()}
-										end,
-										receive
-											Rta -> Rte ! Rta
-										end;
-			["LEA", Nombre, Juegoid] -> bm ! {leave, Nombre, Juegoid, self()},
-										receive
-											Pid_j -> Pid_j ! {leave, Nombre, Juegoid, self()}
-										end,
-										receive
-											Rta -> Rte ! Rta
-										end;
-			["BYE"] -> 	bm ! {bye, self()},
-						receive
-							Pid_j -> Pid_j ! {bye, self()}
-						end,
-						Rte ! "OK BYE"; 
-			_ -> gen_tcp:send(Sock,"Error: comando no válido")
-		end
-		end,
-		gen_tcp:close(Sock).
-%loop(Sock).
+loop(Nodos) ->
+    receive
+    	{Msg,Rte}->
+    		case Msg of
+    			["CON", Nombre] ->
+                    Res = check_nombre(Nombre,Nodos),
+                    if
+                        Res -> Rte ! "ERROR "++Nombre;
+
+                        true-> Rte ! "OK "++Nombre
+                    end;
+    			["LSG", Nombre] -> 	bm ! {lista, self()},
+    								receive
+    									Rta -> Rte ! Rta
+    								end;
+    			["NEW", Nombre] ->
+                    Res = create_game(Nombre,Nodos),
+                    if
+                        Res -> Rte ! "ERROR "++Nombre;
+
+                        true-> Rte ! "OK "++Nombre
+                    end;
+    			["ACC", Nombre, Juegoid] -> bm ! {acepta, Nombre, Juegoid, self()},
+    										receive
+    											Pid_j -> Pid_j ! {acepta, Nombre, Juegoid, self()}
+    										end,
+    										receive
+    											Rta -> Rte ! Rta
+    										end;
+    			["PLA", Nombre, Juegoid, Jugada] -> bm ! {jugada, Nombre, Juegoid, Jugada, self()},
+    												receive
+    													Pid_j -> Pid_j ! {jugada, Nombre, Juegoid, Jugada, self()}
+    												end,
+    												receive
+    													Rta -> Rte ! Rta
+    												end;
+    			["OBS", Nombre, Juegoid] -> bm ! {observador, Nombre, Juegoid, self()},
+    										receive
+    											Pid_j -> Pid_j ! {observador, Nombre, Juegoid, self()}
+    										end,
+    										receive
+    											Rta -> Rte ! Rta
+    										end;
+    			["LEA", Nombre, Juegoid] -> bm ! {leave, Nombre, Juegoid, self()},
+    										receive
+    											Pid_j -> Pid_j ! {leave, Nombre, Juegoid, self()}
+    										end,
+    										receive
+    											Rta -> Rte ! Rta
+    										end;
+    			["BYE"] -> 	bm ! {bye, self()},
+    						receive
+    							Pid_j -> Pid_j ! {bye, self()}
+    						end,
+    						Rte ! "OK BYE";
+    			_ -> io:format("Problema"), exit(-1)
+    		end
+    end.
 
 
-check_nombre(Nombre, Pid) ->
-	bm ! {clave, Nombre, self()},
+check_nombre(Nombre,Nodos) ->
+    Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
+	{bm,Nodo} ! {clave, Nombre, self()},
 	receive
-		Rta -> Pid ! Rta
-	end.
-
-init() ->
-{ok, LSock} = gen_tcp:listen(8000, [binary, {active, true}]),
-{ok, Sock} = gen_tcp:accept(LSock),
-loop(Sock).
+		Rta -> ok
+	end,
+    Rta.
+create_game(Nombre,Nodos) ->
+    Pid_p = tateti:init(),
+    Nodo = lists:nth(erlang:phash(Pid_p,length(Nodos)),Nodos),
+    {bm,Nodo} ! {new, {Pid_p,Nombre}, self()},
+    receive
+        Rta -> ok
+    end,
+    Rta.

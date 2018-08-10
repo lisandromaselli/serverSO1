@@ -1,60 +1,56 @@
 -module(tateti).
 -compile(export_all).
-
-%{J1, Pid_J1, Jugada}
-
-movem(Lista) ->
-loop1(),
-loop2(),
-movem(Lista).
-
-
-loop1()->
+change_player(Jugador,Lista) ->
+    case Jugador of
+        j1  -> movem(j2,Lista);
+        j2  -> movem(j1,Lista);
+        _   -> error("algo se rompio")
+    end.
+movem(Jugador,Lista) ->
 	receive
-		{J1, Pid_J1, Jugada} ->
-			if
-				Jugada >= 1 and Jugada <= 9 -> % Meter en tabla
-			;	true -> % Coordenada no valida
-			end;
-			Lista_m ..
-			Pid_J1 ! {"gano",Lista}
-		_ -> {"error"},loop1()
-end.
-
-loop2()->
-	receive
-		{J2, Pid_J2, Jugada} ->
-			if
-				Jugada >= 1 and Jugada <= 9 -> % Meter en tabla
-			;	true -> % Coordenada no valida
-			end
-		_ -> {"error"},loop2()
+		{Jugador, Pid_J, Jugada} when Jugada >= 1; Jugada =< 9 ->
+    		{status, St, ListaN} = meter(Jugador,Jugada, Lista),
+				case St of
+				    0   -> Pid_J ! {ok,ListaN},change_player(Jugador,ListaN);
+                    1   -> Pid_J ! {win, ListaN};
+					-1  -> Pid_J ! {full, ListaN};
+                    2   -> Pid_J ! {invalid,ListaN},movem(Jugador,ListaN)
+				end;
+		{_,Pid_J,_} ->Pid_J ! {invalid,Lista},movem(Jugador,Lista)
 	end.
-
 
 init() ->
 	Lista = [0,0,0,0,0,0,0,0,0],
-	spawn(?MODULE, movem, [Lista]).
+    spawn(?MODULE, movem, [j1,Lista]).
 
-meter(Pl, Jugada, Lista) ->
+
+
+isfull(ListaN) ->
+	case lists:member(0, ListaN) of
+        true  -> {status, 0, ListaN};
+		false -> {status, -1, ListaN}
+	end.
+
+meter(Pl,Jugada ,Lista) ->
 	case lists:nth(Jugada, Lista) == 0 of		% Pregunta si el lugar esta vacio
 		true ->
 			ListaN = lists:sublist(Lista, Jugada-1) ++ [Pl] ++ lists:nthtail(Jugada, Lista),
-			% Comprobar si alguien gano.
 			case ListaN of
-				[Pl,Pl,Pl,_,_,_,_,_,_] -> {1, Pl, ListaN};
-				[_,_,_,Pl,Pl,Pl,_,_,_] -> {1, Pl, ListaN};
-				[_,_,_,_,_,_,Pl,Pl,Pl] -> {1, Pl, ListaN};
-				[Pl,_,_,Pl,_,_,Pl,_,_] -> {1, Pl, ListaN};
-				[_,Pl,_,_,Pl,_,_,Pl,_] -> {1, Pl, ListaN};
-				[_,_,Pl,_,_,Pl,_,_,Pl] -> {1, Pl, ListaN};
-				[Pl,_,_,_,Pl,_,_,_,Pl] -> {1, Pl, ListaN};
-				[_,_,Pl,_,Pl,_,Pl,_,_] -> {1, Pl, ListaN}
-				_ -> spawn(?MODULE, isfull, [ListaN]) 
+				[Pl,Pl,Pl,_,_,_,_,_,_] -> {status, 1, ListaN};
+				[_,_,_,Pl,Pl,Pl,_,_,_] -> {status, 1, ListaN};
+				[_,_,_,_,_,_,Pl,Pl,Pl] -> {status, 1, ListaN};
+				[Pl,_,_,Pl,_,_,Pl,_,_] -> {status, 1, ListaN};
+				[_,Pl,_,_,Pl,_,_,Pl,_] -> {status, 1, ListaN};
+				[_,_,Pl,_,_,Pl,_,_,Pl] -> {status, 1, ListaN};
+				[Pl,_,_,_,Pl,_,_,_,Pl] -> {status, 1, ListaN};
+				[_,_,Pl,_,Pl,_,Pl,_,_] -> {status, 1, ListaN};
+				_                      -> isfull(ListaN)
 			end;
-		false ->
-			{0, Pl, ListaN}
+		false ->  {status, 2,Lista}%% Repetir jugada en otro lugar
 	end.
 
-isfull(ListaN) when lists:member(0, ListaN) == true -> {0, Pl, ListaN};
-isfull(ListaN) when lists:member(0, ListaN) == false -> {-1, Pl, ListaN}.
+funcion(A) ->
+    receive
+    {A,_} -> io:format("EXITO"),funcion(j2);
+    _   -> io:format("FRACASO"),funcion(A)
+end.
