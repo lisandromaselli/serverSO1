@@ -18,11 +18,10 @@ loop(Nodos) ->
     									Rta -> Rte ! Rta
     								end;
     			["NEW", Nombre] ->
-                    Res = create_game(Nombre,Nodos),
-                    if
-                        Res -> Rte ! "ERROR "++Nombre;
-
-                        true-> Rte ! "OK "++Nombre
+                    case create_game(Nombre,Nodos) of
+                        true            -> Rte ! "OK "++Nombre;
+                        {false,exit}    -> Rte ! "ERROR "++Nombre++" partida ya creada";
+                        {false,no_exist}-> Rte ! "ERROR "++Nombre++" no registrado"
                     end;
     			["ACC", Nombre, Juegoid] -> bm ! {acepta, Nombre, Juegoid, self()},
     										receive
@@ -66,14 +65,19 @@ check_nombre(Nombre,Nodos) ->
     Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
 	{bm,Nodo} ! {clave, Nombre, self()},
 	receive
-		Rta -> ok
-	end,
-    Rta.
+		Rta -> Rta
+	end.
 create_game(Nombre,Nodos) ->
-    Pid_p = tateti:init(),
-    Nodo = lists:nth(erlang:phash(Pid_p,length(Nodos)),Nodos),
-    {bm,Nodo} ! {new, {Pid_p,Nombre}, self()},
+    Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
+    {bm,Nodo} ! {buscar,Nombre,self()},
     receive
-        Rta -> ok
-    end,
-    Rta.
+            {value,vacio}   ->
+                Pid_p = tateti:init(),
+                Nodo = lists:nth(erlang:phash(Pid_p,length(Nodos)),Nodos),
+                {bm,Nodo} ! {new, {Pid_p,Nombre}, self()},
+                receive
+                    Rta -> Rta
+                end;
+            {value,Pid_p}   -> {false,exist};
+            none            -> {false,no_exist}
+    end.

@@ -38,13 +38,20 @@ psocket(Sock,Pid_B,Nodos) ->
 
 bmanager(Nombres,Partidas) ->
     receive
+        {buscar,Nombre,Pid} ->
+            Pid ! gb_trees:lookup(Nombre,Nombres),bmanager(Nombres,Partidas);
         {clave,Nombre,Pid}  ->
             Result  = case gb_trees:lookup(Nombre,Nombres) of
-                {value,V} -> Pid ! true , Nombres;
-                none      -> Pid ! false ,gb_trees:insert(Nombre,Pid,Nombres)
-            end
-    end,
-bmanager(Result,Partidas).
+                {value,V} -> Pid ! true,Nombres;
+                none      -> Pid ! false ,gb_trees:insert(Nombre,vacio,Nombres)
+            end,
+            bmanager(Result,Partidas);
+        {new, {Pid_p,Nombre}, Pid} ->
+            Result_p = gb_trees:enter(Pid_p,{Nombre,vacio},Partidas),
+            Result_n = gb_trees:update(Nombre,Pid_p,Nombres),
+            Pid ! true,
+            bmanager(Result_n,Result_p)
+    end.
 
 iniciador(Nodos) ->
 	lists:foreach(fun(X) -> net_adm:ping(X) end,Nodos),
