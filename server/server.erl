@@ -48,17 +48,11 @@ bmanager(Nombres,Partidas) ->
             end,
             bmanager(Result,Partidas);
         {new, {Pid_p,Nombre}, Pid} ->
-            Result_p = gb_trees:enter(Pid_p,{Nombre,vacio},Partidas),
+            Result_p = gb_trees:enter(Pid_p,{Nombre,vacio,[]},Partidas),
             Result_n = gb_trees:update(Nombre,Pid_p,Nombres),
             Pid ! true,
-            bmanager(Result_n,Result_p)
-    end.
-=======
-                {value,V} -> Pid ! true , Nombres;
-                none      -> Pid ! false ,gb_trees:insert(Nombre,Pid,Nombres)
-				end;
+            bmanager(Result_n,Result_p);
 		{lista, Pid} -> Pid ! gb_trees:to_list(Partidas);
-		{new, {Pid_p, Nombre}, Pid} -> gb_trees:insert(Pid_p, [Nombre], Partidas), Pid ! true;
 		{acc, Nombre, Juegoid, Pid} ->
 			case gb_trees:lookup(Juegoid, Partidas) of
 				{value, [J1]} -> if
