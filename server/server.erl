@@ -42,6 +42,7 @@ bmanager(Nombres,Partidas) ->
             Pid ! gb_trees:lookup(Nombre,Nombres),bmanager(Nombres,Partidas);
         {clave,Nombre,Pid}  ->
             Result  = case gb_trees:lookup(Nombre,Nombres) of
+<<<<<<< HEAD
                 {value,V} -> Pid ! true,Nombres;
                 none      -> Pid ! false ,gb_trees:insert(Nombre,vacio,Nombres)
             end,
@@ -52,6 +53,31 @@ bmanager(Nombres,Partidas) ->
             Pid ! true,
             bmanager(Result_n,Result_p)
     end.
+=======
+                {value,V} -> Pid ! true , Nombres;
+                none      -> Pid ! false ,gb_trees:insert(Nombre,Pid,Nombres)
+				end;
+		{lista, Pid} -> Pid ! gb_trees:to_list(Partidas);
+		{new, {Pid_p, Nombre}, Pid} -> gb_trees:insert(Pid_p, [Nombre], Partidas), Pid ! true;
+		{acc, Nombre, Juegoid, Pid} ->
+			case gb_trees:lookup(Juegoid, Partidas) of
+				{value, [J1]} -> if
+									J1 =/= Nombre -> gb_trees:update(Juegoid, [J1, Nombre], Partidas), Pid ! true;
+									true -> Pid ! true
+									end;
+				_ -> Pid ! false
+				end;
+		{jugar, Nombre, Juegoid, Jugada, Pid} ->
+			case gb_trees:lookup(Juegoid, Partidas) of
+				{value, Jug} -> case Jugada of
+									-1 -> gb_trees:update(Juegoid, Jug--Nombre, Partidas), Pid ! ok;
+									_ -> Juegoid ! {Nombre, Pid, Jugada}
+									end;
+				none -> Pid ! {error, "No existe partida"}
+				end;
+    end,
+bmanager(Result,Partidas).
+>>>>>>> d15afcf5bcd013a86a594a3a515b63f75f78147c
 
 iniciador(Nodos) ->
 	lists:foreach(fun(X) -> net_adm:ping(X) end,Nodos),

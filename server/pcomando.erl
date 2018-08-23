@@ -13,30 +13,25 @@ loop(Nodos) ->
 
                         true-> Rte ! "OK "++Nombre
                     end;
-    			["LSG", Nombre] -> 	bm ! {lista, self()},
-    								receive
-    									Rta -> Rte ! Rta
-    								end;
+    			["LSG", Nombre] -> bm ! {lista, self()},
+					Res = list_games(),
+					Rte ! Res;
     			["NEW", Nombre] ->
                     case create_game(Nombre,Nodos) of
                         true            -> Rte ! "OK "++Nombre;
                         {false,exit}    -> Rte ! "ERROR "++Nombre++" partida ya creada";
                         {false,no_exist}-> Rte ! "ERROR "++Nombre++" no registrado"
                     end;
-    			["ACC", Nombre, Juegoid] -> bm ! {acepta, Nombre, Juegoid, self()},
-    										receive
-    											Pid_j -> Pid_j ! {acepta, Nombre, Juegoid, self()}
-    										end,
-    										receive
-    											Rta -> Rte ! Rta
-    										end;
-    			["PLA", Nombre, Juegoid, Jugada] -> bm ! {jugada, Nombre, Juegoid, Jugada, self()},
-    												receive
-    													Pid_j -> Pid_j ! {jugada, Nombre, Juegoid, Jugada, self()}
-    												end,
-    												receive
-    													Rta -> Rte ! Rta
-    												end;
+    			["ACC", Nombre, Juegoid] ->
+					Res = accept_game(Nombre, Juegoid),
+					if
+						Res -> Rte ! "OK "++Nombre;
+
+						true -> Rte ! "ERROR "++Nombre
+					end;
+    			["PLA", Nombre, Juegoid, Jugada] ->
+					Res = play(Nombre, Juegoid, Jugada),
+					Rte ! Res;
     			["OBS", Nombre, Juegoid] -> bm ! {observador, Nombre, Juegoid, self()},
     										receive
     											Pid_j -> Pid_j ! {observador, Nombre, Juegoid, self()}
@@ -67,6 +62,14 @@ check_nombre(Nombre,Nodos) ->
 	receive
 		Rta -> Rta
 	end.
+
+list_games() ->
+	bm ! {lista, self()},
+	receive
+		Rta -> ok
+	end,
+	Rta.
+
 create_game(Nombre,Nodos) ->
     Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
     {bm,Nodo} ! {buscar,Nombre,self()},
@@ -81,3 +84,20 @@ create_game(Nombre,Nodos) ->
             {value,Pid_p}   -> {false,exist};
             none            -> {false,no_exist}
     end.
+
+accept_game(Nombre, Juegoid) ->
+	bm ! {acc, Nombre, Juegoid, self()},
+	receive
+		Rta -> ok
+	end,
+	Rta.
+
+play(Nombre, Juegoid, Jugada) ->
+	bm ! {jugar, Nombre, Juegoid, Jugada, self()}, %% si la jugada es -1, se abandona el juego
+	receive
+		{ok,ListaN} -> "OK";
+		{win, ListaN} -> "GANÓ";
+		{full, ListaN} -> "EMPATE";
+		{invalid,ListaN} -> "ERROR: lugar no válido";
+		ok -> "ABANDONO EL JUEGO"
+	end.
