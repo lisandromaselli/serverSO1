@@ -13,9 +13,15 @@ loop(Nodos) ->
 
                         true-> Rte ! "OK "++Nombre
                     end;
-    			["LSG", Nombre] -> bm ! {lista, self()},
-					Res = list_games(),
-					Rte ! Res;
+    			["LSG", Nombre] ->
+                case check_nombre(Nombre,Nodos) of
+                    false -> Rte ! "ERROR "++Nombre,exit(0);
+                    true ->
+                        bm ! {lista,self(),Nodos},
+                        receive
+                            Lista -> Rte ! "OK "++Nombre++" "++Lista
+                        end
+                end;
     			["NEW", Nombre] ->
                     case create_game(Nombre,Nodos) of
                         true            -> Rte ! "OK "++Nombre;
@@ -63,12 +69,6 @@ check_nombre(Nombre,Nodos) ->
 		Rta -> Rta
 	end.
 
-list_games() ->
-	bm ! {lista, self()},
-	receive
-		Rta -> ok
-	end,
-	Rta.
 
 create_game(Nombre,Nodos) ->
     Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),

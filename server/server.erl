@@ -42,7 +42,6 @@ bmanager(Nombres,Partidas) ->
             Pid ! gb_trees:lookup(Nombre,Nombres),bmanager(Nombres,Partidas);
         {clave,Nombre,Pid}  ->
             Result  = case gb_trees:lookup(Nombre,Nombres) of
-<<<<<<< HEAD
                 {value,V} -> Pid ! true,Nombres;
                 none      -> Pid ! false ,gb_trees:insert(Nombre,vacio,Nombres)
             end,
@@ -52,8 +51,23 @@ bmanager(Nombres,Partidas) ->
             Result_n = gb_trees:update(Nombre,Pid_p,Nombres),
             Pid ! true,
             bmanager(Result_n,Result_p);
-		{lista, Pid} -> Pid ! gb_trees:to_list(Partidas);
-		{acc, Nombre, Juegoid, Pid} ->
+        {lista,Pid} ->
+            Pid ! lists:map(fun(X) -> pid_to_list(X) end,gb_trees:keys(Partidas)),
+            bmanager(Nombres,Partidas);
+		{lista, Pid,Nodos} ->
+            Resto_nodos = lists:delete(node(),Nodos),
+            Listas = lists:flatten(
+                lists:map(
+                fun(Nodo) ->
+                    {bm,Nodo} ! {lista,self()},
+                    receive
+                        Rta -> Rta
+                    end
+                end,Resto_nodos)
+            ),
+            Pid !  string:join(lists:append(Listas,lists:map(fun(X) -> pid_to_list(X) end,gb_trees:keys(Partidas))),","),
+            bmanager(Nombres,Partidas);
+        {acc, Nombre, Juegoid, Pid} ->
 			case gb_trees:lookup(Juegoid, Partidas) of
 				{value, [J1]} -> if
 									J1 =/= Nombre -> gb_trees:update(Juegoid, [J1, Nombre], Partidas), Pid ! true;
@@ -68,11 +82,8 @@ bmanager(Nombres,Partidas) ->
 									_ -> Juegoid ! {Nombre, Pid, Jugada}
 									end;
 				none -> Pid ! {error, "No existe partida"}
-				end;
-    end,
-bmanager(Result,Partidas).
->>>>>>> d15afcf5bcd013a86a594a3a515b63f75f78147c
-
+				end
+    end.
 iniciador(Nodos) ->
 	lists:foreach(fun(X) -> net_adm:ping(X) end,Nodos),
     Pid = spawn(?MODULE,bmanager,[gb_trees:empty(),gb_trees:empty()]),
