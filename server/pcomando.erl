@@ -7,19 +7,17 @@ loop(Nodos) ->
     	{Msg,Rte}->
     		case Msg of
     			["CON", Nombre] ->
-                    Res = check_nombre(Nombre,Nodos),
-                    if
-                        Res -> Rte ! "ERROR "++Nombre;
-
-                        true-> Rte ! "OK "++Nombre
+                    case add_nombre(Nombre,Nodos) of
+                        true -> Rte ! "ERROR "++Nombre;
+                        false-> Rte ! "OK "++Nombre
                     end;
     			["LSG", Nombre] ->
                 case check_nombre(Nombre,Nodos) of
-                    false -> Rte ! "ERROR "++Nombre,exit(0);
+                    false -> Rte ! "ERROR "++Nombre;
                     true ->
                         bm ! {lista,self(),Nodos},
                         receive
-                            Lista -> Rte ! "OK "++Nombre++" "++Lista
+                            Lista -> Rte ! "OK "++Nombre++" "++"["++Lista++"]"
                         end
                 end;
     			["NEW", Nombre] ->
@@ -29,15 +27,27 @@ loop(Nodos) ->
                         {false,no_exist}-> Rte ! "ERROR "++Nombre++" no registrado"
                     end;
     			["ACC", Nombre, Juegoid] ->
-					Res = accept_game(Nombre, Juegoid),
-					if
-						Res -> Rte ! "OK "++Nombre;
-
-						true -> Rte ! "ERROR "++Nombre
-					end;
+                    case check_nombre(Nombre,Nodos) of
+                        false -> Rte ! "ERROR "++Nombre++" no registrado";
+                        true ->
+        					case accept_game(Nombre, Juegoid,Nodos) of
+        						true -> Rte ! "OK "++Nombre;
+        						{false,ocupada} -> Rte ! "ERROR "++Nombre++"partida ya ocupada";
+                                {false,no_exist} ->Rte ! "ERROR "++Nombre++" partida no existe";
+                                {false,invalid}  ->Rte ! "ERROR "++Nombre++" invalido"
+                            end
+                    end;
     			["PLA", Nombre, Juegoid, Jugada] ->
-					Res = play(Nombre, Juegoid, Jugada),
-					Rte ! Res;
+                    case play(Nombre, Juegoid, Jugada,Nodos) of
+                        {false,no_acc} -> Rte ! "ERROR "++Nombre++" partida no aceptada";
+                        {false,no_exist} -> Rte ! "ERROR "++Nombre++" partida no existe";
+                        {false,no_permisson} -> Rte ! "ERROR "++Nombre++" no tenes permiso";
+                        {invalid,ListaN} -> Rte ! "ERROR "++Nombre++" jugada inválida";
+                        {ok,ListaN} -> Rte ! "OK " ++Nombre++"["++lists:flatten([io_lib:format("~p,", [V]) || V <- ListaN])++"]";
+                		{win, ListaN} -> Rte ! "OK "++Nombre++" GANÓ";
+                		{full, ListaN} -> Rte ! "OK "++Nombre++" EMPATE";
+                		ok -> Rte ! "OK "++Nombre++" ABANDONO EL JUEGO"
+                    end;
     			["OBS", Nombre, Juegoid] -> bm ! {observador, Nombre, Juegoid, self()},
     										receive
     											Pid_j -> Pid_j ! {observador, Nombre, Juegoid, self()}
@@ -64,15 +74,22 @@ loop(Nodos) ->
 
 check_nombre(Nombre,Nodos) ->
     Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
+	{bm,Nodo} ! {buscar_n, Nombre, self()},
+	receive
+		{value,_} -> true;
+        none -> false
+	end.
+
+add_nombre(Nombre,Nodos) ->
+    Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
 	{bm,Nodo} ! {clave, Nombre, self()},
 	receive
 		Rta -> Rta
 	end.
 
-
 create_game(Nombre,Nodos) ->
     Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
-    {bm,Nodo} ! {buscar,Nombre,self()},
+    {bm,Nodo} ! {buscar_n,Nombre,self()},
     receive
             {value,vacio}   ->
                 Pid_p = tateti:init(),
@@ -85,19 +102,37 @@ create_game(Nombre,Nodos) ->
             none            -> {false,no_exist}
     end.
 
-accept_game(Nombre, Juegoid) ->
-	bm ! {acc, Nombre, Juegoid, self()},
+accept_game(Nombre, Juegoid,Nodos) ->
+    Partida = list_to_pid(Juegoid),
+    Nodo = lists:nth(erlang:phash(Partida,length(Nodos)),Nodos),
+    {bm,Nodo} ! {acc, Nombre,Partida, self()},
 	receive
-		Rta -> ok
-	end,
-	Rta.
-
-play(Nombre, Juegoid, Jugada) ->
-	bm ! {jugar, Nombre, Juegoid, Jugada, self()}, %% si la jugada es -1, se abandona el juego
-	receive
-		{ok,ListaN} -> "OK";
-		{win, ListaN} -> "GANÓ";
-		{full, ListaN} -> "EMPATE";
-		{invalid,ListaN} -> "ERROR: lugar no válido";
-		ok -> "ABANDONO EL JUEGO"
+		Rta -> Rta
 	end.
+
+play(Nombre, Juegoid, Jugada,Nodos) ->
+    Partida = list_to_pid(Juegoid),
+    Nodo = lists:nth(erlang:phash(Partida,length(Nodos)),Nodos),
+    {bm,Nodo} ! {buscar_p,Partida,self()},
+    {Jugada_i,_} = string:to_integer(Jugada),
+    receive
+        {value,{J1,vacio,_}} -> {false,no_acc};
+        {value,{J1,J2,_}} ->
+            case J1 == Nombre of
+                true ->
+                    Partida ! {j1, self(), Jugada_i },
+                    receive
+                        Rta -> Rta
+                    end;
+                false ->
+                    case J2 == Nombre of
+                        true ->
+                            Partida ! {j2, self(), Jugada_i},
+                            receive
+                                Rta -> Rta
+                            end;
+                        false -> {false,no_permisson}
+                    end
+            end;
+        none -> {false,no_exist}
+    end.
