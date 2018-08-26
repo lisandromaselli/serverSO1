@@ -8,8 +8,7 @@ pstat(Nodos) ->
 		Carga = statistics(total_active_tasks),
 		lists:foreach(fun(X) -> {pb,X} ! {node(),Carga} end,Nodos)
 	end,
-	pstat(Nodos).
-
+    pstat(Nodos).
 
 pbalance(Dict) ->
 	receive
@@ -23,16 +22,18 @@ pbalance(Dict) ->
 psocket(Sock,Pid_B,Nodos) ->
 	receive
 	{tcp,Rte,Msg} ->
-		Msg_p = string:tokens([X || <<X>> <= Msg]," "),
+		Msg_p = string:tokens([X || <<X>> <= Msg]," \r\n"),
         io:format("psocket send:~p~n",[Msg_p]),
 		Pid_B ! {self(),nodo},
-		receive
-			Nodo -> Pid = spawn(Nodo,pcomando,loop,[Nodos]),
-		            Pid ! {Msg_p,self()}
-        end,
-        receive
-            Msg_c -> gen_tcp:send(Rte,Msg_c),io:format("psocket receive:~p ~n ",[Msg_c])
-        end
+    		receive
+    			Nodo -> Pid = spawn(Nodo,pcomando,loop,[Nodos]),
+    		            Pid ! {Msg_p,self()}
+            end,
+            receive
+                Msg_c -> gen_tcp:send(Rte,Msg_c),io:format("psocket receive:~p ~n ",[Msg_c])
+            end;
+    {upd,Msg} ->
+        gen_tcp:send(Sock,Msg),io:format("psocket send:~p ~n ",[Msg])
     end,
     psocket(Sock,Pid_B,Nodos).
 
@@ -42,17 +43,16 @@ bmanager(Nombres,Partidas) ->
             Pid ! gb_trees:lookup(Nombre,Nombres),bmanager(Nombres,Partidas);
         {buscar_p,Partida,Pid} ->
             Pid ! gb_trees:lookup(Partida,Partidas),bmanager(Nombres,Partidas);
-        {clave,Nombre,Pid}  ->
+        {clave,Nombre,Pid_n,Pid}  ->
             Result  = case gb_trees:lookup(Nombre,Nombres) of
-                {value,V} -> Pid ! true,Nombres;
-                none      -> Pid ! false ,gb_trees:insert(Nombre,vacio,Nombres)
+                {value,_} -> Pid ! true,Nombres;
+                none      -> Pid ! false ,gb_trees:insert(Nombre,Pid_n,Nombres)
             end,
             bmanager(Result,Partidas);
         {new, {Pid_p,Nombre}, Pid} ->
             Result_p = gb_trees:enter(Pid_p,{Nombre,vacio,[]},Partidas),
-            Result_n = gb_trees:update(Nombre,Pid_p,Nombres),
             Pid ! true,
-            bmanager(Result_n,Result_p);
+            bmanager(Nombres,Result_p);
         {lista,Pid} ->
             Pid ! lists:map(fun(X) -> pid_to_list(X) end,gb_trees:keys(Partidas)),
             bmanager(Nombres,Partidas);
@@ -89,6 +89,7 @@ bmanager(Nombres,Partidas) ->
                     bmanager(Nombres,Partidas)
 			end
     end.
+
 iniciador(Nodos) ->
 	lists:foreach(fun(X) -> net_adm:ping(X) end,Nodos),
     Pid = spawn(?MODULE,bmanager,[gb_trees:empty(),gb_trees:empty()]),
