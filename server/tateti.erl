@@ -16,7 +16,9 @@ movem(Jugador,Lista) ->
 					-1  -> Pid_J ! {full, ListaN};
                     2   -> Pid_J ! {invalid,ListaN},movem(Jugador,ListaN)
 				end;
-		{_,Pid_J,_} ->Pid_J ! {invalid,Lista},movem(Jugador,Lista)
+		{_,Pid_J,_} ->
+            Pid_J ! {invalid,Lista},
+            movem(Jugador,Lista)
 	end.
 
 init() ->
