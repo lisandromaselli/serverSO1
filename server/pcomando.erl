@@ -53,20 +53,17 @@ loop(Nodos) ->
                             Rte ! "OK "++Nombre++" EMPATE\n",send_update(Espect,Nodos,Juegoid,full);
                 		ok -> Rte ! "OK "++Nombre++" ABANDONO EL JUEGO\n"
                     end;
-    			["OBS", Nombre, Juegoid] -> bm ! {observador, Nombre, Juegoid, self()},
-    										receive
-    											Pid_j -> Pid_j ! {observador, Nombre, Juegoid, self()}
-    										end,
-    										receive
-    											Rta -> Rte ! Rta
-    										end;
-    			["LEA", Nombre, Juegoid] -> bm ! {leave, Nombre, Juegoid, self()},
-    										receive
-    											Pid_j -> Pid_j ! {leave, Nombre, Juegoid, self()}
-    										end,
-    										receive
-    											Rta -> Rte ! Rta
-    										end;
+    			["OBS", Nombre, Juegoid] -> 
+					case obs(Nombre, Juegoid, Nodos) of
+						{false, no_exist} -> "ERROR NO EXISTE PARTIDA";
+						{ok, agregado} -> "OK "++Nombre++" COMO OBSERVADOR"++"\n"
+					end;
+    			["LEA", Nombre, Juegoid] ->
+					case leave(Nombre, Juegoid, Nodos) of
+						{ok, eliminado} -> "OK "++Nombre++" ABANDONO COMO OBSERVADOR"++"\n";
+						{ok, no_encontrado} -> "OK "++Nombre++" NO ERA OBSERVADOR"++"\n";
+						{false, no_exist} -> "ERROR NO EXISTE PARTIDA"
+					end;
     			["BYE"] -> 	bm ! {bye, self()},
     						receive
     							Pid_j -> Pid_j ! {bye, self()}
@@ -134,6 +131,23 @@ play(Nombre, Juegoid, Jugada,Nodos) ->
         {value,_} -> {false,no_permisson};
         none -> {false,no_exist}
     end.
+    
+obs(Nombre, Juegoid, Nodos) ->
+	Partida = list_to_pid(Juegoid),
+	Nodo = lists:nth(erlang:phash(Partida, length(Nodos)), Nodos),
+	{bm, Nodo} ! {obs, Nombre, Partida, self()},
+	receive
+		Rta -> Rta
+	end.
+	
+leave(Nombre, Juegoid, Nodos) ->
+	Partida = list_to_pid(Juegoid),
+	Nodo = lists:nth(erlang:phash(Partida, length(Nodos)), Nodos),
+	{bm, Nodo} ! {leave, Nombre, Partida, self()},
+	receive
+		Rta -> Rta
+	end.
+
 send_update([],_,_,_) -> ok;
 send_update([Nombre|Lista],Nodos,Juegoid,{win,Jugador}) ->
     Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
