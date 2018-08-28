@@ -31,7 +31,7 @@ loop(Nodos) ->
                         false -> Rte ! "ERROR "++Nombre++" no registrado";
                         true ->
         					case accept_game(Nombre, Juegoid,Nodos) of
-        						true -> Rte ! "OK "++Nombre;
+        						true -> Rte ! "OK "++Nombre++"\n";
         						{false,ocupada} -> Rte ! "ERROR "++Nombre++"partida ya ocupada"++"\n";
                                 {false,no_exist} ->Rte ! "ERROR "++Nombre++" partida no existe"++"\n";
                                 {false,invalid}  ->Rte ! "ERROR "++Nombre++" invalido"++"\n"
@@ -53,17 +53,26 @@ loop(Nodos) ->
                             Rte ! "OK "++Nombre++" EMPATE\n",send_update(Espect,Nodos,Juegoid,full);
                 		ok -> Rte ! "OK "++Nombre++" ABANDONO EL JUEGO\n"
                     end;
-    			["OBS", Nombre, Juegoid] -> 
-					case obs(Nombre, Juegoid, Nodos) of
-						{false, no_exist} -> "ERROR NO EXISTE PARTIDA";
-						{ok, agregado} -> "OK "++Nombre++" COMO OBSERVADOR"++"\n"
-					end;
+    			["OBS", Nombre, Juegoid] ->
+                    case check_nombre(Nombre,Nodos) of
+                        false -> Rte ! "ERROR "++Nombre++" no registrado";
+                        true ->
+        					case obs(Nombre, Juegoid, Nodos) of
+        						{false, no_exist} ->Rte !  "ERROR "++Nombre++" NO EXISTE PARTIDA";
+                                {false,ya_existe} ->Rte !  "ERROR "++Nombre++" YA ESTA OBSERVANDO";
+        						{ok, agregado} -> Rte ! "OK "++Nombre++" COMO OBSERVADOR"++"\n"
+        					end
+                    end;
     			["LEA", Nombre, Juegoid] ->
-					case leave(Nombre, Juegoid, Nodos) of
-						{ok, eliminado} -> "OK "++Nombre++" ABANDONO COMO OBSERVADOR"++"\n";
-						{ok, no_encontrado} -> "OK "++Nombre++" NO ERA OBSERVADOR"++"\n";
-						{false, no_exist} -> "ERROR NO EXISTE PARTIDA"
-					end;
+                    case check_nombre(Nombre,Nodos) of
+                        false -> Rte ! "ERROR "++Nombre++" no registrado";
+                        true ->
+                            case leave(Nombre, Juegoid, Nodos) of
+        						{ok, eliminado} ->Rte !  "OK "++Nombre++" ABANDONO COMO OBSERVADOR"++"\n";
+        						{ok, no_encontrado} -> Rte ! "ERROR "++Nombre++" NO ERA OBSERVADOR"++"\n";
+        						{false, no_exist} -> Rte ! "ERROR "++Nombre++" NO EXISTE PARTIDA"++"\n"
+        					end
+                    end;
     			["BYE"] -> 	bm ! {bye, self()},
     						receive
     							Pid_j -> Pid_j ! {bye, self()}
@@ -131,7 +140,7 @@ play(Nombre, Juegoid, Jugada,Nodos) ->
         {value,_} -> {false,no_permisson};
         none -> {false,no_exist}
     end.
-    
+
 obs(Nombre, Juegoid, Nodos) ->
 	Partida = list_to_pid(Juegoid),
 	Nodo = lists:nth(erlang:phash(Partida, length(Nodos)), Nodos),
@@ -139,7 +148,7 @@ obs(Nombre, Juegoid, Nodos) ->
 	receive
 		Rta -> Rta
 	end.
-	
+
 leave(Nombre, Juegoid, Nodos) ->
 	Partida = list_to_pid(Juegoid),
 	Nodo = lists:nth(erlang:phash(Partida, length(Nodos)), Nodos),
