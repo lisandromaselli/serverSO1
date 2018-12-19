@@ -9,6 +9,7 @@ loop(Nodos) ->
     			["CON", Nombre] ->
                     Rte ! "ERROR deslogueate\n";
     			["LSG", Nombre] ->
+                io:format(" ~p ~p",[Nombre,Nodos]),
                 case check_nombre(Nombre,Nodos) of
                     false -> Rte ! "ERROR "++Nombre++"\n";
                     true ->
@@ -76,7 +77,7 @@ loop(Nodos) ->
     							Pid_j -> Pid_j ! {bye, self()}
     						end,
     						Rte ! "OK BYE";
-    			_ -> io:format("Problema"), exit(-1)
+    			_ -> Rte ! "COMANDO INVALIDO"
     		end
     end.
 

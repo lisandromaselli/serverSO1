@@ -19,46 +19,45 @@ pbalance(Dict) ->
 	end,
     pbalance(Dict).
 
-loguear(Sock,Nodos) ->
+psocket(Sock,Pid_B,Nodos) ->
+
     receive
     {tcp,Rte,Msg} ->
         Msg_p = string:tokens([X || <<X>> <= Msg]," \r\n"),
         io:format("psocket send:~p~n",[Msg_p]),
         case Msg_p of
             ["CON", Nombre] ->
-                case add_nombre(Nombre,Nodos,Rte) of
+                case add_nombre(Nombre,Nodos,self()) of
                     true -> Msg_c = "ERROR "++Nombre++"\n";
-                    false-> Msg_c = "OK "++Nombre++"\n"
+                    false-> Msg_c = "OK "++Nombre++"\n",gen_tcp:send(Rte,Msg_c),atiende(Sock,Pid_B,Nodos,Nombre)
                 end;
             _ -> Msg_c = "ERROR \n"
         end,
         gen_tcp:send(Rte,Msg_c),io:format("psocket receive:~p ~n ",[Msg_c]);
-    {upd,Msg} ->
-        gen_tcp:send(Sock,Msg),io:format("psocket send:~p ~n ",[Msg])
-    end,
-    Nombre.
+    _ -> ok
+  end,
+  psocket(Sock,Pid_B,Nodos).
 
-psocket(Sock,Pid_B,Nodos) ->
-    Nombre = loguear(Sock,Nodos),
+atiende(Sock,Pid_B,Nodos,Nombre) ->
     receive
 	{tcp,Rte,Msg} ->
 		Msg_p = string:tokens([X || <<X>> <= Msg]," \r\n"),
-        io:format("psocket send:~p~n",[Msg_p]),
+        io:format("atiende send:~p~n",[Msg_p]),
 		Pid_B ! {self(),nodo},
-    		receive
+    receive
     			Nodo -> Pid = spawn(Nodo,pcomando,loop,[Nodos]),
     		            Pid ! {Msg_p,self()}
             end,
             receive
                 Msg_c -> case Msg_c of
-                        "OK BYE" -> gen_tcp:send(Rte,Msg_c),gen_tcp:close(Sock),io:format("pepito");
-                        _        -> gen_tcp:send(Rte,Msg_c),io:format("psocket receive:~p ~n ",[Msg_c])
+                        "OK BYE" -> gen_tcp:send(Rte,Msg_c),gen_tcp:close(Sock),io:format("cerre");
+                        _        -> gen_tcp:send(Rte,Msg_c),io:format("atiende receive:~p ~n ",[Msg_c])
                         end
             end;
     {upd,Msg} ->
-        gen_tcp:send(Sock,Msg),io:format("psocket send:~p ~n ",[Msg])
+        gen_tcp:send(Sock,Msg),io:format("atiende send:~p ~n ",[Msg])
     end,
-    psocket(Sock,Pid_B,Nodos).
+    atiende(Sock,Pid_B,Nodos,Nombre).
 
 add_nombre(Nombre,Nodos,Rte) ->
     Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
@@ -144,8 +143,8 @@ bmanager(Nombres,Partidas) ->
                             bmanager(Nombres, Partidas_n)
                     end;
 				none -> Pid ! {false, no_exist}, bmanager(Nombres, Partidas)
-            end
-            {bye,Pid,Nombre} ->
+      end;
+            {bye,Pid,Nombre} -> ok
 
     end.
 
