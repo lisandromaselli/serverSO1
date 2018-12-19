@@ -7,10 +7,7 @@ loop(Nodos) ->
     	{Msg,Rte}->
     		case Msg of
     			["CON", Nombre] ->
-                    case add_nombre(Nombre,Nodos,Rte) of
-                        true -> Rte ! "ERROR "++Nombre++"\n";
-                        false-> Rte ! "OK "++Nombre++"\n"
-                    end;
+                    Rte ! "ERROR deslogueate\n";
     			["LSG", Nombre] ->
                 case check_nombre(Nombre,Nodos) of
                     false -> Rte ! "ERROR "++Nombre++"\n";
@@ -74,6 +71,7 @@ loop(Nodos) ->
         					end
                     end;
     			["BYE"] -> 	bm ! {bye, self()},
+                            io:format("pepito saliendo"),
     						receive
     							Pid_j -> Pid_j ! {bye, self()}
     						end,
@@ -91,12 +89,6 @@ check_nombre(Nombre,Nodos) ->
         none -> false
 	end.
 
-add_nombre(Nombre,Nodos,Rte) ->
-    Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
-	{bm,Nodo} ! {clave, Nombre,Rte, self()},
-	receive
-		Rta -> Rta
-	end.
 
 create_game(Nombre,Nodos) ->
     Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
