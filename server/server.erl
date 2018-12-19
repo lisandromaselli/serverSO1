@@ -24,7 +24,7 @@ psocket(Sock,Pid_B,Nodos) ->
     receive
     {tcp,Rte,Msg} ->
         Msg_p = string:tokens([X || <<X>> <= Msg]," \r\n"),
-        io:format("psocket send:~p~n",[Msg_p]),
+        io:format("psocket send:~p\n",[Msg_p]),
         case Msg_p of
             ["CON", Nombre] ->
                 case add_nombre(Nombre,Nodos,self()) of
@@ -33,7 +33,7 @@ psocket(Sock,Pid_B,Nodos) ->
                 end;
             _ -> Msg_c = "ERROR \n"
         end,
-        gen_tcp:send(Rte,Msg_c),io:format("psocket receive:~p ~n ",[Msg_c]);
+        gen_tcp:send(Rte,Msg_c),io:format("psocket receive:~p \n ",[Msg_c]);
     _ -> ok
   end,
   psocket(Sock,Pid_B,Nodos).
@@ -42,26 +42,26 @@ atiende(Sock,Pid_B,Nodos,Nombre) ->
     receive
 	{tcp,Rte,Msg} ->
 		Msg_p = string:tokens([X || <<X>> <= Msg]," \r\n"),
-        io:format("atiende send:~p~n",[Msg_p]),
+        io:format("atiende send:~p\n",[Msg_p]),
 		Pid_B ! {self(),nodo},
     receive
-    			Nodo -> Pid = spawn(Nodo,pcomando,loop,[Nodos]),
+    			Nodo -> Pid = spawn(Nodo,pcomando,loop,[Nodos,Nombre]),
     		            Pid ! {Msg_p,self()}
             end,
             receive
                 Msg_c -> case Msg_c of
                         "OK BYE" -> gen_tcp:send(Rte,Msg_c),gen_tcp:close(Sock),io:format("cerre");
-                        _        -> gen_tcp:send(Rte,Msg_c),io:format("atiende receive:~p ~n ",[Msg_c])
+                        _        -> gen_tcp:send(Rte,Msg_c),io:format("atiende receive:~p \n ",[Msg_c])
                         end
             end;
     {upd,Msg} ->
-        gen_tcp:send(Sock,Msg),io:format("atiende send:~p ~n ",[Msg])
+        gen_tcp:send(Sock,Msg),io:format("atiende send:~p \n ",[Msg])
     end,
     atiende(Sock,Pid_B,Nodos,Nombre).
 
 add_nombre(Nombre,Nodos,Rte) ->
     Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
-	{bm,Nodo} ! {clave, Nombre,Rte, self()},
+	{bm,Nodo} ! {clave, Nombre, self()},
 	receive
 		Rta -> Rta
 	end.
@@ -72,16 +72,19 @@ bmanager(Nombres,Partidas) ->
             Pid ! gb_trees:lookup(Nombre,Nombres),bmanager(Nombres,Partidas);
         {buscar_p,Partida,Pid} ->
             Pid ! gb_trees:lookup(Partida,Partidas),bmanager(Nombres,Partidas);
-        {clave,Nombre,Pid_n,Pid}  ->
+        {clave,Nombre,Pid}  ->
             Result  = case gb_trees:lookup(Nombre,Nombres) of
                 {value,_} -> Pid ! true,Nombres;
-                none      -> Pid ! false ,gb_trees:insert(Nombre,Pid_n,Nombres)
+                none      -> Pid ! false ,gb_trees:insert(Nombre,{Pid,[]},Nombres)
             end,
             bmanager(Result,Partidas);
         {new, {Pid_p,Nombre}, Pid} ->
             Result_p = gb_trees:enter(Pid_p,{Nombre,vacio,[]},Partidas),
-            Pid ! true,
-            bmanager(Nombres,Result_p);
+            Result_n = case gb_trees:lookup(Nombre,Nombres) of
+                        {value,{Pid_n,Lista}} -> Pid ! true,gb_trees:update(Nombre,{Pid_n,Lista ++ [Pid_p]},Nombres);
+                        none -> Pid ! false, Nombres
+                      end,
+            bmanager(Result_n,Result_p);
         {lista,Pid} ->
             Pid ! lists:map(fun(X) -> pid_to_list(X) end,gb_trees:keys(Partidas)),
             bmanager(Nombres,Partidas);
@@ -99,6 +102,7 @@ bmanager(Nombres,Partidas) ->
             Pid !  string:join(lists:append(Listas,lists:map(fun(X) -> pid_to_list(X) end,gb_trees:keys(Partidas))),","),
             bmanager(Nombres,Partidas);
         {acc, Nombre, Juegoid, Pid} ->
+          %falta agregar q cuando acepta una partida se agregue a su lista en niombres
 			case gb_trees:lookup(Juegoid, Partidas) of
                 {value,{J1,vacio,Espect}} ->
                     case J1 =/= Nombre of
@@ -144,10 +148,18 @@ bmanager(Nombres,Partidas) ->
                     end;
 				none -> Pid ! {false, no_exist}, bmanager(Nombres, Partidas)
       end;
-            {bye,Pid,Nombre} -> ok
-
+      {bye,Pid,Nombre} -> case  gb_trees:lookup(Nombre,Nombres) of
+                              {value,{Pid_n,Lista}} ->
+                                  Result_p = delete(Lista,Partidas),
+                                  Result_n = gb_trees:delete_any(Nombre,Nombres),
+                                  Pid ! true,
+                                  bmanager(Result_n,Result_p);
+                              none -> Pid ! false, bmanager(Nombre,Partidas)
+                        end
     end.
-
+delete([],Partidas) -> Partidas;
+delete([Partida|Lista],Partidas) ->
+  delete(Lista,gb_trees:delete_any(Partida,Partidas)).
 iniciador(Nodos) ->
 	lists:foreach(fun(X) -> net_adm:ping(X) end,Nodos),
     Pid = spawn(?MODULE,bmanager,[gb_trees:empty(),gb_trees:empty()]),
