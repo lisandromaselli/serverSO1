@@ -9,3 +9,12 @@ init(Port,Msj)->
     {ok,Msg} = gen_tcp:recv(Sock,0),
     io:format("Respuesta: [~p]~n", [[X || <<X>> <= Msg]]),
     ok = gen_tcp:close(Sock).
+
+funcion(X) -> io:format("~p",[X]).
+
+
+start() ->
+  A = "asd",
+  B = [1,2,3],
+
+  funcion(tostring(A)++tostring(B)).

@@ -25,7 +25,7 @@ loop(Nodos,Nombre) ->
                     end;
     			["ACC", Juegoid] ->
                     case check_nombre(Nombre,Nodos) of
-                        false -> Rte ! "ERROR "++Nombre++" no registrado";
+                        false -> Rte ! "ERROR "++Nombre++" no registrado\n";
                         true ->
         					case accept_game(Nombre, Juegoid,Nodos) of
         						true -> Rte ! "OK "++Nombre++"\n";
@@ -39,11 +39,11 @@ loop(Nodos,Nombre) ->
                         {false,no_acc} -> Rte ! "ERROR "++Nombre++" partida no aceptada"++"\n";
                         {false,no_exist} -> Rte ! "ERROR "++Nombre++" partida no existe"++"\n";
                         {false,no_permisson} -> Rte ! "ERROR "++Nombre++" no tenes permiso"++"\n";
-                        {{invalid,_},_} -> Rte ! "ERROR "++Nombre++" jugada inválida"++"\n";
+                        {invalid,_} -> Rte ! "ERROR "++Nombre++" jugada inválida"++"\n";
                         {ok,ListaN} ->
                             Lista = lists:flatten([io_lib:format("~p,", [V]) || V <- ListaN]),
                             Rte ! "OK " ++Nombre++"["++Lista++"]\n",
-                            notify(Juegoid,Nodos,{ok,ListaN,Nombre});
+                            notify(Juegoid,Nodos,{ok,Lista,Nombre});
                 		{win, ListaN} ->
                             Rte ! "OK "++Nombre++" GANÓ\n",notify(Juegoid,Nodos,{win,Nombre});
                 		{full, ListaN} ->
@@ -71,12 +71,13 @@ loop(Nodos,Nombre) ->
         					end
                     end;
     			["BYE"] ->
-                  bm ! {buscar_n,Nombre,self()},
+                  Nodo = lists:nth(erlang:phash(Nombre, length(Nodos)), Nodos),
+                  {bm,Nodo} ! {buscar_n,Nombre,self()},
                   receive
                     {value,{Pid,Lista}}  ->avisar(Lista,Nodos,Nombre);
                     none        -> ok
                   end,
-                  bm ! {bye,self(),Nombre},
+                  {bm,Nodo} ! {bye,self(),Nombre},
             		receive
             			true -> Rte ! close;
                         false -> Rte ! "NO OK\n"
@@ -87,7 +88,8 @@ loop(Nodos,Nombre) ->
 
 avisar([],_,_) -> ok;
 avisar([Partida|Lista],Nodos,Nombre) ->
-    notify(Partida,Nodos,{bye,Nombre}),
+    io:format("~p",[is_pid(Partida)]),
+    notify(pid_to_list(Partida),Nodos,{bye,Nombre}),
     avisar(Lista,Nodos,Nombre).
 check_nombre(Nombre,Nodos) ->
     Nodo = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
@@ -100,36 +102,41 @@ check_nombre(Nombre,Nodos) ->
 
 create_game(Nombre,Nodos) ->
     Pid_p = tateti:init(),
-    Nodo_p = lists:nth(erlang:phash(Pid_p,length(Nodos)),Nodos),
-    {bm,Nodo_p} ! {new, {Pid_p,Nombre}, self()},
+    Nombre_p = pid_to_list(Pid_p),
+    io:format("Pid : ~p \n",[Pid_p]),
+    Nodo_p = lists:nth(erlang:phash(Nombre_p,length(Nodos)),Nodos),
+    {bm,Nodo_p} ! {new, {Nombre_p,Pid_p,Nombre}, self()},
     Nodo_n = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
-    {bm,Nodo_n} ! {add, {Pid_p,Nombre}, self()},
+    {bm,Nodo_n} ! {add, {Nombre_p,Nombre}, self()},
     receive
         Rta -> Rta
     end.
 
-accept_game(Nombre, Juegoid,Nodos) ->
-    Partida = list_to_pid(Juegoid),
-    Nodo = lists:nth(erlang:phash(Partida,length(Nodos)),Nodos),
-    {bm,Nodo} ! {acc, Nombre,Partida, self()},
-	receive
-		Rta -> Rta
-	end.
+accept_game(Nombre, Partida,Nodos) ->
+    Nodo_p = lists:nth(erlang:phash(Partida,length(Nodos)),Nodos),
+    {bm,Nodo_p} ! {acc, Nombre,Partida, self()},
+    Nodo_n = lists:nth(erlang:phash(Nombre,length(Nodos)),Nodos),
+  	receive
+  		true -> io:format("estoy aca"),{bm,Nodo_n} ! {add, {Partida,Nombre}, self()},
+              receive
+                Rta -> Rta
+              end;
+      Rta  -> Rta
+  	end.
 
-play(Nombre, Juegoid, Jugada,Nodos) ->
-    Partida = list_to_pid(Juegoid),
+play(Nombre, Partida, Jugada,Nodos) ->
     Nodo = lists:nth(erlang:phash(Partida,length(Nodos)),Nodos),
     {bm,Nodo} ! {buscar_p,Partida,self()},
     {Jugada_i,_} = string:to_integer(Jugada),
     receive
-        {value,{_,vacio,_}} -> {false,no_acc};
-        {value,{Nombre,J,Espect}} ->
-            Partida ! {j1, self(), Jugada_i},
+        {value,{_,{_,vacio,_}}} -> {false,no_acc};
+        {value,{Pid,{Nombre,J,Espect}}} ->
+            Pid ! {j1, self(), Jugada_i},
             receive
                 Rta -> Rta
             end;
-        {value,{J,Nombre,Espect}} ->
-            Partida ! {j2, self(), Jugada_i},
+        {value,{Pid,{J,Nombre,Espect}}} ->
+            Pid ! {j2, self(), Jugada_i},
             receive
                 Rta -> Rta
             end;
@@ -137,16 +144,14 @@ play(Nombre, Juegoid, Jugada,Nodos) ->
         none -> {false,no_exist}
     end.
 
-obs(Nombre, Juegoid, Nodos) ->
-	Partida = list_to_pid(Juegoid),
+obs(Nombre, Partida, Nodos) ->
 	Nodo = lists:nth(erlang:phash(Partida, length(Nodos)), Nodos),
 	{bm, Nodo} ! {obs, Nombre, Partida, self()},
 	receive
 		Rta -> Rta
 	end.
 
-leave(Nombre, Juegoid, Nodos) ->
-	Partida = list_to_pid(Juegoid),
+leave(Nombre, Partida, Nodos) ->
 	Nodo = lists:nth(erlang:phash(Partida, length(Nodos)), Nodos),
 	{bm, Nodo} ! {leave, Nombre, Partida, self()},
 	receive
@@ -165,18 +170,18 @@ send_update([Nombre|Lista],Nodos,Msg) ->
     send_update(Lista,Nodos,Msg).
 
 notify(Partida,Nodos,Op) ->
-    Nodo = lists:nth(erlang:phash(list_to_pid(Partida), length(Nodos)), Nodos),
-    {bm,Nodo} ! {buscar_p,list_to_pid(Partida),self()},
-    io:format("~p",[Partida]),
+    Nodo = lists:nth(erlang:phash(Partida, length(Nodos)), Nodos),
+    {bm,Nodo} ! {buscar_p,Partida,self()},
+    io:format("Partida a notificar:~p",[Partida]),
     receive
-        {value,{J1,vacio,_}}   -> io:format("la peor");
-        {value,{J1,J2,Espect}} ->
+        {value,{_,{J1,vacio,_}}}   -> io:format("la peor");
+        {value,{_,{J1,J2,Espect}}} ->
             io:format("~p ~p",[J1,J2]),
             case Op of
                 {full,J1}       -> send_update(Espect ++ [J2],Nodos,"UPD "++Partida++" EMPATE\n");
                 {full,J2}       -> send_update(Espect ++ [J1],Nodos,"UPD "++Partida++" EMPATE\n");
-                {win,J1}        -> send_update(Espect ++ [J1] ++ J2,Nodos,"UPD "++J1++" GANO\n");
-                {win,J2}        -> send_update(Espect ++ [J1] ++ J2,Nodos,"UPD "++J2++" GANO\n");
+                {win,J1}        -> send_update(Espect ++ [J2],Nodos,"UPD "++J1++" GANO\n");
+                {win,J2}        -> send_update(Espect ++ [J1],Nodos,"UPD "++J2++" GANO\n");
                 {ok,ListaN,J1}  -> send_update(Espect ++ [J2],Nodos,"UPD "++J2++" "++Partida++" "++ListaN++"\n");
                 {ok,ListaN,J2}  -> send_update(Espect ++ [J1],Nodos,"UPD "++J1++" "++Partida++" "++ListaN++"\n");
                 {bye,J1}        -> send_update(Espect ++ [J2],Nodos,"UPD "++J1++" ABANDONO "++Partida++"\n" );

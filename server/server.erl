@@ -81,16 +81,16 @@ bmanager(Nombres,Partidas) ->
                 none                    -> Pid ! false, Nombres
             end,
             bmanager(Result_n,Partidas);
-        {new, {Pid_p,Nombre}, Pid} ->
-            Result_p = gb_trees:enter(Pid_p,{Nombre,vacio,[]},Partidas),
+        {new, {Nombre_p,Pid_p,Nombre}, Pid} ->
+            Result_p = gb_trees:enter(Nombre_p,{Pid_p,{Nombre,vacio,[]}},Partidas),
             bmanager(Nombres,Result_p);
         {lista,Pid} ->
-            Pid ! lists:map(fun(X) -> pid_to_list(X) end,gb_trees:keys(Partidas)),
+            Pid ! gb_trees:keys(Partidas),
             bmanager(Nombres,Partidas);
-		{lista, Pid,Nodos} ->
+				{lista, Pid,Nodos} ->
             Resto_nodos = lists:delete(node(),Nodos),
             Listas = lists:flatten(
-                lists:map(
+                Lista = lists:map(
                 fun(Nodo) ->
                     {bm,Nodo} ! {lista,self()},
                     receive
@@ -98,52 +98,57 @@ bmanager(Nombres,Partidas) ->
                     end
                 end,Resto_nodos)
             ),
-            Pid !  string:join(lists:append(Listas,lists:map(fun(X) -> pid_to_list(X) end,gb_trees:keys(Partidas))),","),
+						Partidas_actuales = gb_trees:keys(Partidas),
+						io:format("Listas: ~p locales: ~p  map:~p\n",[Listas, Partidas_actuales,Lista]),
+						Respuesta = Listas++lists:flatten(Partidas_actuales),
+						Pid !  Respuesta,
             bmanager(Nombres,Partidas);
         {acc, Nombre, Juegoid, Pid} ->
+					io:format("Partidas: ~p\n",[Partidas]),
+					io:format("Jugadores: ~p\n",[Nombres]),
           %falta agregar q cuando acepta una partida se agregue a su lista en niombres
-			case gb_trees:lookup(Juegoid, Partidas) of
-                {value,{J1,vacio,Espect}} ->
-                    case J1 =/= Nombre of
-                        true ->
-                            Result_p = gb_trees:update(Juegoid,{J1,Nombre,Espect}, Partidas),
-                            case gb_trees:lookup(Nombre,Nombres) of
-                                {value,{Pid_n,Lista}}   -> Pid ! true, bmanager(gb_trees:update(Nombre,{Pid_n,Lista ++ [Juegoid]},Nombres),Result_p);
-                                none                    -> Pid ! {false,invalid}, bmanager(Nombres,Partidas)
-                            end;
-                        false ->
-                            Pid ! {false,invalid},
-                            bmanager(Nombres,Partidas)
-                        end;
-				{value, {J1,J2,Espect}} ->
-                    Pid ! {false,ocupada},
-                    bmanager(Nombres,Partidas);
-				none ->
-                    Pid ! {false,no_exist},
-                    bmanager(Nombres,Partidas)
-			end;
+					case gb_trees:lookup(Juegoid, Partidas) of
+            {value,{Pid_p,{J1,vacio,Espect}}} ->
+                case J1 =/= Nombre of
+                    true ->io:format("estoy 1"),
+                        Result_p = gb_trees:update(Juegoid,{Pid_p,{J1,Nombre,Espect}}, Partidas),
+												Pid ! true,
+												bmanager(Nombres,Result_p);
+                    false ->io:format("estoy 2"),
+                        Pid ! {false,invalid},
+                        bmanager(Nombres,Partidas)
+                    end;
+						{value,{_,{J1,J2,Espect}}} ->io:format("estoy 3"),
+		                    Pid ! {false,ocupada},
+		                    bmanager(Nombres,Partidas);
+						none ->
+												io:format("estoy 4"),
+		                    Pid ! {false,no_exist},
+		                    bmanager(Nombres,Partidas);
+						_ -> io:format("no entrenguel")
+					end;
 		{obs, Nombre, Partida, Pid} ->
 			case gb_trees:lookup(Partida,Partidas) of
-				{value, {J1, J2, Espect}} ->
-                    case lists:member(Nombre, Espect) of
-                        false ->
-                            Espect_n = Espect++[Nombre],
-                            Partidas_n = gb_trees:update(Partida,{J1, J2, Espect_n},Partidas),
-                            Pid ! {ok, agregado},
-                            bmanager(Nombres, Partidas_n);
-                        true -> Pid ! {false, ya_existe}, bmanager(Nombres, Partidas)
-                    end;
+				{value, {Pid_p,{J1, J2, Espect}}} ->
+          case lists:member(Nombre, Espect) of
+              false ->
+                  Espect_n = Espect++[Nombre],
+                  Partidas_n = gb_trees:update(Partida,{Pid_p,{J1, J2, Espect_n}},Partidas),
+                  Pid ! {ok, agregado},
+                  bmanager(Nombres, Partidas_n);
+              true -> Pid ! {false, ya_existe}, bmanager(Nombres, Partidas)
+          end;
 				none -> Pid ! {false, no_exist}, bmanager(Nombres, Partidas)
 			end;
 		{leave, Nombre, Partida, Pid} ->
 			case gb_trees:lookup(Partida, Partidas) of
-				{value, {J1, J2, Espect}} ->
+				{value, {Pid_p,{J1, J2, Espect}}} ->
                     case lists:member(Nombre, Espect) of
                         false ->
                             Pid ! {ok, no_encontrado}, bmanager(Nombres, Partidas);
-						true ->
+												true ->
                             Espect_n = Espect--[Nombre],
-                            Partidas_n = gb_trees:update(Partida,{J1, J2, Espect_n},Partidas),
+                            Partidas_n = gb_trees:update(Partida,{Pid_p,{J1, J2, Espect_n}},Partidas),
                             Pid ! {ok, eliminado},
                             bmanager(Nombres, Partidas_n)
                     end;
