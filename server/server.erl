@@ -44,16 +44,13 @@ atiende(Sock,Pid_B,Nodos,Nombre) ->
 		Msg_p = string:tokens([X || <<X>> <= Msg]," \r\n"),
         io:format("atiende send:~p\n",[Msg_p]),
 		Pid_B ! {self(),nodo},
-    receive
-    			Nodo -> Pid = spawn(Nodo,pcomando,loop,[Nodos,Nombre]),
-    		            Pid ! {Msg_p,self()}
-            end,
-            receive
-                Msg_c -> case Msg_c of
-                        "OK BYE" -> gen_tcp:send(Rte,Msg_c),gen_tcp:close(Sock),io:format("cerre");
-                        _        -> gen_tcp:send(Rte,Msg_c),io:format("atiende receive:~p \n ",[Msg_c])
-                        end
-            end;
+        receive
+    		Nodo -> Pid = spawn(Nodo,pcomando,loop,[Nodos,Nombre]),Pid ! {Msg_p,self()}
+        end,
+        receive
+            close -> io:format("llego bien \n"),gen_tcp:send(Rte,"OK BYE \n"),gen_tcp:close(Sock);
+            Msg_c -> gen_tcp:send(Rte,Msg_c),io:format("atiende receive:~p \n ",[Msg_c])
+        end;
     {upd,Msg} ->
         gen_tcp:send(Sock,Msg),io:format("atiende send:~p \n ",[Msg])
     end,
@@ -78,13 +75,15 @@ bmanager(Nombres,Partidas) ->
                 none      -> Pid ! false ,gb_trees:insert(Nombre,{Pid,[]},Nombres)
             end,
             bmanager(Result,Partidas);
+        {add, {Pid_p,Nombre}, Pid} ->
+            Result_n = case gb_trees:lookup(Nombre,Nombres) of
+                {value,{Pid_n,Lista}}   -> Pid ! true, gb_trees:update(Nombre,{Pid_n,Lista ++ [Pid_p]},Nombres);
+                none                    -> Pid ! false, Nombres
+            end,
+            bmanager(Result_n,Partidas);
         {new, {Pid_p,Nombre}, Pid} ->
             Result_p = gb_trees:enter(Pid_p,{Nombre,vacio,[]},Partidas),
-            Result_n = case gb_trees:lookup(Nombre,Nombres) of
-                        {value,{Pid_n,Lista}} -> Pid ! true,gb_trees:update(Nombre,{Pid_n,Lista ++ [Pid_p]},Nombres);
-                        none -> Pid ! false, Nombres
-                      end,
-            bmanager(Result_n,Result_p);
+            bmanager(Nombres,Result_p);
         {lista,Pid} ->
             Pid ! lists:map(fun(X) -> pid_to_list(X) end,gb_trees:keys(Partidas)),
             bmanager(Nombres,Partidas);
@@ -108,8 +107,10 @@ bmanager(Nombres,Partidas) ->
                     case J1 =/= Nombre of
                         true ->
                             Result_p = gb_trees:update(Juegoid,{J1,Nombre,Espect}, Partidas),
-                            Pid ! true,
-                            bmanager(Nombres,Result_p);
+                            case gb_trees:lookup(Nombre,Nombres) of
+                                {value,{Pid_n,Lista}}   -> Pid ! true, bmanager(gb_trees:update(Nombre,{Pid_n,Lista ++ [Juegoid]},Nombres),Result_p);
+                                none                    -> Pid ! {false,invalid}, bmanager(Nombres,Partidas)
+                            end;
                         false ->
                             Pid ! {false,invalid},
                             bmanager(Nombres,Partidas)
@@ -155,7 +156,8 @@ bmanager(Nombres,Partidas) ->
                                   Pid ! true,
                                   bmanager(Result_n,Result_p);
                               none -> Pid ! false, bmanager(Nombre,Partidas)
-                        end
+                        end;
+    _ -> io:format("LA peor"),bmanager(Nombres,Partidas)
     end.
 delete([],Partidas) -> Partidas;
 delete([Partida|Lista],Partidas) ->
